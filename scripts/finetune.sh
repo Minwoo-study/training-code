@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 
 export OMP_NUM_THREADS=4
-export WANDB_PROJECT="project-name"
+export WANDB_PROJECT="arspraxia_uft"
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
-OUTPUT_DIR="/data/checkpoints/$WANDB_PROJECT"
+RUN_NAME="llama-7b-chat-uft"
+OUTPUT_DIR="output/$WANDB_PROJECT/$RUN_NAME"
 
-MODEL_NAME='meta-llama/llama-2-7b-hf'
-TRAIN_DATASET="/data/$WANDB_PROJECT/train.llama.arrow"
-EVAL_DATASET="/data/$WANDB_PROJECT/eval.llama.arrow"
+MODEL_NAME="meta-llama/Llama-2-7b-chat-hf"
+TRAIN_DATASET="../../dataset/unsupervised_txt/train.llama.arrow"
+EVAL_DATASET="../../dataset/unsupervised_txt/eval.llama.arrow"
 
-BSZ=8
+BSZ=1
 
 accelerate launch \
-    '../training/hf_trainer.py' \
+    './training/hf_trainer.py' \
     --model_name_or_path "$MODEL_NAME" \
     --train_file "$TRAIN_DATASET" \
     --eval_file "$EVAL_DATASET" \
@@ -23,16 +25,18 @@ accelerate launch \
     --optim 'adamw_torch_fused' \
     --seed 0 --data_seed 0 \
     --logging_first_step true --logging_steps 1 \
-    --dataloader_num_workers 1 \
+    --dataloader_num_workers 30 \
     --per_device_train_batch_size "$BSZ" --per_device_eval_batch_size "$BSZ" \
-    --fp16 true \
-    --evaluation_strategy "steps" --eval_steps 128 \
-    --save_strategy "steps" --save_steps 128 \
+    --low_cpu_mem_usage false \
+    --evaluation_strategy "steps" --eval_steps 20000 \
+    --save_strategy "steps" --save_steps 20000 \
     --save_total_limit 2 \
     --gradient_accumulation_steps 1 \
-    --learning_rate 1.0e-5 \
+    --learning_rate 1e-5 \
     --lr_scheduler_type "cosine" \
     --warmup_steps 28 \
-    --num_train_epochs 4 \
-    --use_xformers \
+    --num_train_epochs 2 \
+    --use_lora \
+    --run_name "$RUN_NAME" \
+    --uft \
     $@

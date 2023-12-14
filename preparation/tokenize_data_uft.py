@@ -5,6 +5,9 @@ import os
 import numpy as np
 import pyarrow as pa
 
+from pathlib import Path
+from typing import List, Tuple
+from tqdm import tqdm
 from transformers import AddedToken, AutoTokenizer, PreTrainedTokenizer
 
 LOG = logging.getLogger(__name__)
@@ -54,11 +57,12 @@ def main() -> None:
         total_num_tokens = 0
         # Find all .txt files from a directory which could potentially
         # contain other files.
-        txt_files = filter(lambda x: x.endswith(".txt"), os.listdir(args.input_path))
-        txt_files = [os.path.join(args.input_path, f) for f in txt_files]
+        LOG.info("Listing files...")
+        input_path = Path(args.input_path)
+        txt_files = [file for file in input_path.glob("*.txt")]
 
         # Obtain the list of token arrays
-        for file in txt_files:
+        for file in tqdm(txt_files, desc="Tokenizing"):
             file_tokens, num_tokens = _tokenize_file(tokenizer, file, args.max_length)
             all_file_tokens += file_tokens
             total_num_tokens += num_tokens
@@ -109,7 +113,7 @@ def _parse_args_from_argv() -> argparse.Namespace:
 
     return parser.parse_args()
 
-def _tokenize_file(tokenizer: PreTrainedTokenizer, filepath: str, max_length: int, append_eos: bool = True) -> tuple[list[np.array], int]:
+def _tokenize_file(tokenizer: PreTrainedTokenizer, filepath: str, max_length: int, append_eos: bool = True) -> Tuple[List[np.array], int]:
     '''
     Opens a singular text document and converts its contents into a large array of tokens.
 
@@ -117,7 +121,7 @@ def _tokenize_file(tokenizer: PreTrainedTokenizer, filepath: str, max_length: in
     tokenizer: The specific tokenizer used to tokenize the file.
     filepath: The path to the text document that will be tokenized.
     '''
-    LOG.info(f"Loading file {filepath} into memory and tokenizing...")
+    # LOG.info(f"Loading file {filepath} into memory and tokenizing...")
 
     is_llama = tokenizer.eos_token == "</s>"
     
@@ -140,18 +144,25 @@ def _tokenize_file(tokenizer: PreTrainedTokenizer, filepath: str, max_length: in
     splitable_tkn_chunks = tokenized_contents[:closest_ctxlen_factor]
     remainder_tokens = tokenized_contents[closest_ctxlen_factor:]
 
-    # We do array_split rather than split here so that `tokens` will have type `list`.
-    tokenized_contents = np.array_split(splitable_tkn_chunks, (closest_ctxlen_factor // max_length))
-
-    # ...then append what's left, if it's unevenly divided
-    if num_tokens > closest_ctxlen_factor:
-        tokenized_contents.append(remainder_tokens)
+    # Check if closest_ctxlen_factor is zero
+    if closest_ctxlen_factor == 0:
+        # If the file is shorter than max_length, return the entire file as a single chunk
+        tokenized_contents = [tokenized_contents]
+        print("file is shorter than max_length")
+        print("file path:", filepath)
+        print("num tokens:", num_tokens)
+    else:
+        # Split the contents into chunks of max_length
+        tokenized_contents = np.array_split(splitable_tkn_chunks, (closest_ctxlen_factor // max_length))
+        # Append remainder tokens if any
+        if num_tokens > closest_ctxlen_factor:
+            tokenized_contents.append(remainder_tokens)
     
-    LOG.info(f"Done! File {filepath} has been tokenized.")
+    # LOG.info(f"Done! File {filepath} has been tokenized.")
 
     return tokenized_contents, num_tokens
 
-def _save_as_arrow_file(tokens: list[np.array], output_file: str) -> None:
+def _save_as_arrow_file(tokens: List[np.array], output_file: str) -> None:
     '''
     Saves a list of arrays with `context_length` length (unless it is not)
 
