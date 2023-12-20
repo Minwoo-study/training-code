@@ -11,7 +11,7 @@ MODEL_NAME="meta-llama/Llama-2-7b-chat-hf"
 TRAIN_DATASET="../../dataset/unsupervised_txt/train.llama.arrow"
 EVAL_DATASET="../../dataset/unsupervised_txt/eval.llama.arrow"
 
-BSZ=1
+BSZ=2
 
 accelerate launch \
     './training/hf_trainer.py' \
@@ -28,15 +28,19 @@ accelerate launch \
     --dataloader_num_workers 30 \
     --per_device_train_batch_size "$BSZ" --per_device_eval_batch_size "$BSZ" \
     --low_cpu_mem_usage false \
-    --evaluation_strategy "steps" --eval_steps 20000 \
-    --save_strategy "steps" --save_steps 20000 \
+    --evaluation_strategy "steps" --eval_steps 5000 \
+    --save_strategy "steps" --save_steps 5000 \
     --save_total_limit 2 \
-    --gradient_accumulation_steps 1 \
-    --learning_rate 1e-5 \
+    --gradient_accumulation_steps 4 \
+    --learning_rate 3e-4 \
     --lr_scheduler_type "cosine" \
     --warmup_steps 28 \
     --num_train_epochs 2 \
     --use_lora \
+    --lora_rank 64 \
+    --lora_alpha 16 \
+    --lora_dropout 0.05 \
+    --lora_target_modules 'q_proj,v_proj' \
     --run_name "$RUN_NAME" \
     --uft \
     $@
