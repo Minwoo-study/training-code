@@ -56,6 +56,7 @@ A couple important things to note:
 
 - This will generate fairly "bloated" files - considerably larger than the originals. Plan disk capacity accordingly.
 - EOS tokens will be automatically appended at the end of `generation`, so that at inference time you can use EOS as a stopping criteria (HuggingFace's `transformers` does this by default, for example).
+- To use another model for tokenization (e.g. LLaMA), you could change the `--tokenizer-path` argument to your desired model.
 
 ### Start training
 
@@ -123,7 +124,9 @@ You can pass in `--use_xformers` to [hf_trainer.py](./training/hf_trainer.py) to
 
 Although this repository is meant to be used for conversational fine-tunes which is usually done with a supervised fine-tuning regime, the repo now supports *unsupervised fine-tuning* as well. However, because this repo was built with supervised fine-tuning in mind, unsupervised fine-tuning is not enabled by default; you will need to manually enable it with the `--uft` flag when running [hf_trainer.py](./training/hf_trainer.py).
 
-For UFT, your data should be in either the form of a **singular .txt file or multiple .txt files contained within one directory**. Note that it will not skip over any .txt files in the directory, so avoid having any .txt files which you do not want the model to tokenize within the directory you provide. To tokenize unstructured data, run [tokenize_data_uft.py](./preparation/tokenize_data_uft.py) like this:
+For UFT, your data should be in either the form of a **singular .txt file or multiple .txt files contained within one directory**. Note that it will not skip over any .txt files in the directory, so avoid having any .txt files which you do not want the model to tokenize within the directory you provide. Before tokenizing the data, please make sure you have .txt files ready. To change dataset in other format (such as .csv) to .txt, you could refer to `preparation/reformat_uft_data.py` file.
+
+To tokenize unstructured data, run [tokenize_data_uft.py](./preparation/tokenize_data_uft.py) like this:
 
 ```shell
 python3 ./preparation/tokenize_data_uft.py \
@@ -144,3 +147,4 @@ Please note some things:
 - Much like SFT, .arrow files may take up a significantly larger amount of space on the disk than the original text files. Plan disk space accordingly.
 - EOS tokens will *not* be automatically applied at the end of a generation due to the nature of unsupervised fine-tuning.
 - UFT is a new feature and at the moment may be buggy or inefficient. Pull requests to further work on this are always welcome.
+- To use another model for tokenization (e.g. LLaMA), you could change the `--tokenizer-path` argument to your desired model.
