@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import pandas as pd
 
 import numpy as np
 import pyarrow as pa
@@ -59,7 +60,7 @@ def main() -> None:
         # contain other files.
         LOG.info("Listing files...")
         input_path = Path(args.input_path)
-        txt_files = [file for file in input_path.glob("*.txt")]
+        txt_files = [file for file in input_path.glob("*.jsonl")]
 
         # Obtain the list of token arrays
         for file in tqdm(txt_files, desc="Tokenizing"):
@@ -125,17 +126,16 @@ def _tokenize_file(tokenizer: PreTrainedTokenizer, filepath: str, max_length: in
 
     is_llama = tokenizer.eos_token == "</s>"
     
-    with open(filepath, "r", encoding="utf-8") as f:
-        # Read the entire .txt file into memory.
-        # Good luck!
-        file_contents = f.read()
-        if append_eos:
-            if is_llama:
-                file_contents += f" {tokenizer.eos_token}"
-            else:
-                file_contents += tokenizer.eos_token
+    df = pd.read_json(filepath, lines=True)
+    file_contents = df['Sentence'].str.cat(sep='\n')
 
-        tokenized_contents = tokenizer(file_contents, return_tensors="np").input_ids[0]
+    if append_eos:
+        if is_llama:
+            file_contents += f" {tokenizer.eos_token}"
+        else:
+            file_contents += tokenizer.eos_token
+
+    tokenized_contents = tokenizer(file_contents, return_tensors="np").input_ids[0]
 
     num_tokens = len(tokenized_contents)
 
