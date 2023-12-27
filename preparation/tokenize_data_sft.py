@@ -9,12 +9,9 @@ import numpy as np
 from parallel_pandas import ParallelPandas
 from transformers import AddedToken, AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
+from preprocessing_utils import setup_logging, reconstruct_command
 
-LOG = logging.getLogger(__name__)
-logging.basicConfig(
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    level=logging.DEBUG,
-)
+LOG = setup_logging("logs/preprocessing--tokenize_data_sft.log")
 
 IGNORE_INDEX = -100
 
@@ -23,7 +20,12 @@ IGNORE_INDEX = -100
 NUM_OF_EOS_TOKENS = 3
 
 def main() -> None:
+    LOG.info('Start preprocessing.')
+
     args = _parse_args_from_argv()
+    run_command = reconstruct_command(args, "python preparation/tokenize_data_sft.py")
+    LOG.info(f'Run command: {run_command}')
+
     cpu_count = multiprocessing.cpu_count()
     LOG.info("Preparing to use %s CPU cores...", cpu_count)
     ParallelPandas.initialize(
@@ -102,7 +104,7 @@ def main() -> None:
             writer.write_table(table)
 
     LOG.info(f"Done! Output file saved to {args.output_file}.")
-    LOG.info(f"Dataset contains {num_tokens:,} tokens.")
+    LOG.info(f"Dataset contains {len(df)} sentences; {num_tokens:,} tokens.")
 
 
 def _parse_args_from_argv() -> argparse.Namespace:

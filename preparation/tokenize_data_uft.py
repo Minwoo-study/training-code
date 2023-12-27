@@ -11,14 +11,18 @@ from typing import List, Tuple
 from tqdm import tqdm
 from transformers import AddedToken, AutoTokenizer, PreTrainedTokenizer
 
-LOG = logging.getLogger(__name__)
-logging.basicConfig(
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    level=logging.DEBUG,
-)
+from preprocessing_utils import setup_logging, reconstruct_command
+
+LOG = setup_logging("logs/preprocessing--tokenize_data_uft.log")
+
 
 def main() -> None:
+    LOG.info('Start preprocessing.')
+
     args = _parse_args_from_argv()
+    run_command = reconstruct_command(args, "python preparation/tokenize_data_uft.py")
+    LOG.info(f'Run command: {run_command}')
+    
     assert os.path.isfile(args.input_path) or os.path.isdir(args.input_path), f'File or directory \"{args.input_path}\" not found!'
 
     LOG.info("Loading tokenizer...")
@@ -51,11 +55,11 @@ def main() -> None:
     LOG.info("Done! About to tokenize file(s)...")
 
     if os.path.isfile(args.input_path):
-        all_file_tokens, total_num_tokens = _tokenize_file(tokenizer, args.input_path, args.max_length)
+        all_file_tokens, total_num_tokens, total_num_sents = _tokenize_file(tokenizer, args.input_path, args.max_length)
     # Runs this if and only if args.input_path is a directory
     else:
         all_file_tokens: list[np.array] = []
-        total_num_tokens = 0
+        total_num_tokens, total_num_sents = 0, 0
         # Find all .txt files from a directory which could potentially
         # contain other files.
         LOG.info("Listing files...")
@@ -64,13 +68,14 @@ def main() -> None:
 
         # Obtain the list of token arrays
         for file in tqdm(txt_files, desc="Tokenizing"):
-            file_tokens, num_tokens = _tokenize_file(tokenizer, file, args.max_length)
+            file_tokens, num_tokens, num_sents = _tokenize_file(tokenizer, file, args.max_length)
             all_file_tokens += file_tokens
             total_num_tokens += num_tokens
+            total_num_sents += num_sents
 
     _save_as_arrow_file(all_file_tokens, args.output_file)
     LOG.info(f"Done! Output file saved to {args.output_file}.")
-    LOG.info(f"Dataset contains {total_num_tokens:,} tokens.")
+    LOG.info(f"Dataset contains {total_num_sents} sentences; {total_num_tokens:,} tokens.")
 
 def _parse_args_from_argv() -> argparse.Namespace:
     '''Parses arguments.'''
@@ -127,6 +132,7 @@ def _tokenize_file(tokenizer: PreTrainedTokenizer, filepath: str, max_length: in
     is_llama = tokenizer.eos_token == "</s>"
     
     df = pd.read_json(filepath, lines=True)
+    num_sentences = len(df)
     file_contents = df['Sentence'].str.cat(sep='\n')
 
     if append_eos:
@@ -160,7 +166,7 @@ def _tokenize_file(tokenizer: PreTrainedTokenizer, filepath: str, max_length: in
     
     # LOG.info(f"Done! File {filepath} has been tokenized.")
 
-    return tokenized_contents, num_tokens
+    return tokenized_contents, num_tokens, num_sentences
 
 def _save_as_arrow_file(tokens: List[np.array], output_file: str) -> None:
     '''
