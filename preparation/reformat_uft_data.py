@@ -1,8 +1,11 @@
-import csv
+import argparse
 import json
 import random
 from pathlib import Path
 from tqdm import tqdm
+from preprocessing_utils import setup_logging, reconstruct_command
+
+logger = setup_logging("logs/preprocessing--reformat_uft_data.log")
 
 
 def list_json_files(directory):
@@ -11,35 +14,6 @@ def list_json_files(directory):
     for file in path.rglob('*.json'):
         json_files.append(str(file))
     return json_files
-
-
-def list_csv_files(directory):
-    json_files = []
-    path = Path(directory)
-    for file in path.rglob('*.csv'):
-        json_files.append(str(file))
-    return json_files
-
-
-def write_to_multiple_txt_files(texts, base_file_name, max_lines_per_file):
-    file_count = 1
-    current_line = 0
-    current_file = open(f"{base_file_name}_{file_count}.txt", 'w', encoding='utf-8')
-
-    for text in tqdm(texts, desc="Writing text"):
-        try:
-            current_file.write(text + "\n")
-            current_line += 1
-            if current_line >= max_lines_per_file:
-                current_file.close()
-                file_count += 1
-                current_file = open(f"{base_file_name}_{file_count}.txt", 'w', encoding='utf-8')
-                current_line = 0
-        except TypeError:
-            print(f"Skip writing for {text}")
-
-    current_file.close()
-    print(f"Files saved in {base_file_name}_*.txt")
 
 
 def write_to_multiple_jsonl_files(texts, base_file_name, max_lines_per_file):
@@ -67,64 +41,86 @@ def write_to_multiple_jsonl_files(texts, base_file_name, max_lines_per_file):
 
 
 if __name__ == "__main__":
-    out_parent_path = "../../dataset/unsupervised_jsonl"
-    train_path = Path(f"{out_parent_path}/train/")
-    eval_path = Path(f"{out_parent_path}/eval/")
+    """
+    Example: python preparation/reformat_sft_data.py \
+              --in_parent_path "../../dataset/unsupervised_json_final" \
+              --out_parent_path "../../dataset/unsupervised_jsonl_final"
+    """
+    logger.info('Start preprocessing.')
+
+    parser = argparse.ArgumentParser(description="Process some integers.")
+    parser.add_argument('--in_parent_path', type=str, help='Parent path of the json files directory')
+    parser.add_argument('--out_parent_path', type=str, help='Parent path of the jsonl files directory')
+    parser.add_argument('--max_line', type=int, help='Max line per jsonl file', default=1000)
+
+    args = parser.parse_args()
+
+    # Reconstruct and log the run command
+    run_command = reconstruct_command(args, "python preparation/reformat_sft_data.py")
+    logger.info(f'Run command: {run_command}')
+    
+    # Initialize ouput directory
+    logger.info('Setting up output directory...')
+    train_path = Path(f"{args.out_parent_path}/train/")
+    eval_path = Path(f"{args.out_parent_path}/eval/")
+    
     if not train_path.exists():
         train_path.mkdir(parents=True)
+    
     if not eval_path.exists():
         eval_path.mkdir(parents=True)
 
-    in_parent_path = "../../dataset/unsupervised_json"
-    group_paths = [str(p) for p in Path(in_parent_path).iterdir()]
+    logger.info('Setup complete.')
+    logger.info(f'Training data path: {str(train_path)}')
+    logger.info(f'Eval data path: {str(eval_path)}')
 
-    max_lines_per_file = 1000  # Adjust this as needed
-
+    group_paths = [str(p) for p in Path(args.in_parent_path).iterdir()]
+    
+    logger.info('Start splitting data.')
     for group_path in group_paths:
-        print(f"Reading {group_path}...")
+        logger.info(f"Reading {group_path}...")
         all_json_files = list_json_files(group_path)
 
-        # split the data in each folder to train & eval
-        print("Split train & eval...")
-        random.shuffle(all_json_files)
-        split_idx = int(len(all_json_files) * 0.8)
-        list_train = all_json_files[:split_idx]
-        list_eval = all_json_files[split_idx:]
-
-        train_texts = []
-        train_ids = set()
-        for file_name in tqdm(list_train, desc="Read training"):
+        # Read sentences
+        sent_items = set()  # using set to avoid duplicates
+        for file_name in tqdm(list_train, desc="Read file"):
             with open(file_name, 'r', encoding='utf-8-sig') as file:
                 data = json.load(file)
                 for text in data['data']:
                     if 'Raw_data' not in text or not isinstance(text['Raw_data'], str):
                         continue
+
                     text_clean = ' '.join(text['Raw_data'].split())
-                    train_texts.append({
+                    sent_items.add({
                         'Sen_ID': text['Sen_ID'],
                         'Sentence': text_clean
                     })
-                    train_ids.add(text['Sen_ID'])
+        sent_items_list = list(sent_items)
 
-        eval_texts = []
-        for file_name in tqdm(list_eval, desc="Read eval"):
-            with open(file_name, 'r', encoding='utf-8-sig') as file:
-                data = json.load(file)
-                for text in data['data']:
-                    if 'Raw_data' not in text or not isinstance(text['Raw_data'], str):
-                        continue
-                    text_clean = ' '.join(text['Raw_data'].split())
-                    if text['Sen_ID'] not in train_ids:  # prevent data contamination
-                        eval_texts.append({
-                            'Sen_ID': text['Sen_ID'],
-                            'Sentence': text_clean
-                        })
+        # Split the data in each folder to train & eval
+        logger.info("Split train & eval...")
+        random.shuffle(sent_items_list)
+        split_idx = int(len(sent_items_list) * 0.8)
+        list_train = sent_items_list[:split_idx]
+        list_eval = sent_items_list[split_idx:]
 
-        # Write training text to multiple txt files
+        # Write training text to multiple jsonl files
         dir_names = [i for i in group_path.split("/") if i != ""]
-        train_file_base = f"{out_parent_path}/train/" + dir_names[-1]
-        write_to_multiple_jsonl_files(train_texts, train_file_base, max_lines_per_file)
+        train_file_base = f"{args.out_parent_path}/train/" + dir_names[-1]
+        write_to_multiple_jsonl_files(list_train, train_file_base, args.max_lines)
 
-        # Write eval text to multiple txt files
-        eval_file_base = f"{out_parent_path}/eval/" + dir_names[-1]
-        write_to_multiple_jsonl_files(eval_texts, eval_file_base, max_lines_per_file)
+        # Write eval text to multiple jsonl files
+        eval_file_base = f"{args.out_parent_path}/eval/" + dir_names[-1]
+        write_to_multiple_jsonl_files(list_eval, eval_file_base, args.max_lines)
+
+    logger.info('Finish preprocessing.')
+
+    logger.info('*** Data split information ***')
+    logger.info('1. Training Data')
+    logger.info(f'Files path: {args.out_parent_path}/train/')
+    logger.info(f'Data num: {len(list_train)}')
+    logger.info('2. Evaluation Data')
+    logger.info(f'Files path: {args.out_parent_path}/eval/')
+    logger.info(f'Data num: {len(list_eval)}')
+    
+    logger.info(f'Log saved in {"logs/preprocessing--reformat_uft_data.log"}')
