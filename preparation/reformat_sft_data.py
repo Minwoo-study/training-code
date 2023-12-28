@@ -6,19 +6,21 @@ from preprocessing_utils import setup_logging, reconstruct_command
 
 logger = setup_logging("logs/preprocessing--reformat_sft_data.log")
 
+from tqdm_logging import logging_tqdm
+
 
 def process_data(input_path, output_path, logger):
     print(f"Processing: {input_path}")
     df = pd.read_csv(input_path)
     data = []
-    for row in tqdm(df.itertuples(), desc="Read data"):
+    for row in logging_tqdm(df.itertuples(), desc="Read data"):
         data.append({
             'prompt': row.ID,
             'generation': row.ans_ID
         })
 
     with open(output_path, 'w', encoding='utf-8') as file:
-        for item in tqdm(data, desc="Write data"):
+        for item in logging_tqdm(data, desc="Write data"):
             json_string = json.dumps(item)
             file.write(json_string + '\n')
     

@@ -9,13 +9,27 @@ def ensure_log_dir(log_path):
 
 def setup_logging(log_path):
     ensure_log_dir(log_path)
-    
-    logging.basicConfig(filename=log_path,
-                        filemode='a',
-                        format='%(asctime)s - %(levelname)s - %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        level=logging.INFO)
-    return logging.getLogger()
+
+    # Create a custom logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Create handlers
+    c_handler = logging.StreamHandler()
+    f_handler = logging.FileHandler(log_path)
+    c_handler.setLevel(logging.INFO)
+    f_handler.setLevel(logging.INFO)
+
+    # Create formatters and add it to handlers
+    all_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%d-%d %H:%M:%S')
+    c_handler.setFormatter(all_format)
+    f_handler.setFormatter(all_format)
+
+    # Add handlers to the logger
+    logger.addHandler(c_handler)
+    logger.addHandler(f_handler)
+
+    return logger
 
 
 def reconstruct_command(args, cmd): 

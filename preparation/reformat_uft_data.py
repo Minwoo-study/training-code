@@ -2,10 +2,12 @@ import argparse
 import json
 import random
 from pathlib import Path
-from tqdm import tqdm
 from preprocessing_utils import setup_logging, reconstruct_command
 
-logger = setup_logging("logs/preprocessing--reformat_uft_data.log")
+LOG_FILENAME = "logs/preprocessing--reformat_uft_data.log"
+logger = setup_logging(LOG_FILENAME)
+
+from tqdm_logging import logging_tqdm
 
 
 def list_json_files(directory):
@@ -21,7 +23,7 @@ def write_to_multiple_jsonl_files(texts, base_file_name, max_lines_per_file):
     current_line = 0
     current_file = open(f"{base_file_name}_{file_count}.jsonl", 'w', encoding='utf-8')
 
-    for text in tqdm(texts, desc="Writing text"):
+    for text in logging_tqdm(texts, desc="Writing text"):
         try:
             # Ensure the text is a valid JSON object, typically a dictionary.
             # If 'text' is not already a dictionary, convert or adjust it accordingly.
@@ -34,15 +36,15 @@ def write_to_multiple_jsonl_files(texts, base_file_name, max_lines_per_file):
                 current_file = open(f"{base_file_name}_{file_count}.jsonl", 'w', encoding='utf-8')
                 current_line = 0
         except TypeError:
-            print(f"Skip writing for {text}")
+            logger.info(f"Skip writing for {text}")
 
     current_file.close()
-    print(f"Files saved in {base_file_name}_*.jsonl")
+    logger.info(f"Files saved in {base_file_name}_*.jsonl")
 
 
 if __name__ == "__main__":
     """
-    Example: python preparation/reformat_sft_data.py \
+    Example: python preparation/reformat_uft_data.py \
               --in_parent_path "../../dataset/unsupervised_json_final" \
               --out_parent_path "../../dataset/unsupervised_jsonl_final"
     """
@@ -74,7 +76,12 @@ if __name__ == "__main__":
     logger.info(f'Training data path: {str(train_path)}')
     logger.info(f'Eval data path: {str(eval_path)}')
 
-    group_paths = [str(p) for p in Path(args.in_parent_path).iterdir()]
+    # group_paths = [str(p) for p in Path(args.in_parent_path).iterdir()]
+    group_paths = [
+        f"{args.in_parent_path}/01.Lexis&Nexis",
+        f"{args.in_parent_path}/02.Twitter",
+        f"{args.in_parent_path}/03.Extra",
+    ]
     
     logger.info('Start splitting data.')
     for group_path in group_paths:
@@ -82,8 +89,8 @@ if __name__ == "__main__":
         all_json_files = list_json_files(group_path)
 
         # Read sentences
-        sent_items = set()  # using set to avoid duplicates
-        for file_name in tqdm(list_train, desc="Read file"):
+        sent_items = []
+        for file_name in logging_tqdm(all_json_files, desc="Read file"):
             with open(file_name, 'r', encoding='utf-8-sig') as file:
                 data = json.load(file)
                 for text in data['data']:
@@ -91,10 +98,13 @@ if __name__ == "__main__":
                         continue
 
                     text_clean = ' '.join(text['Raw_data'].split())
-                    sent_items.add({
+                    sent_item = {
                         'Sen_ID': text['Sen_ID'],
                         'Sentence': text_clean
-                    })
+                    }
+                    if sent_item not in sent_items:  # avoid duplicates
+                        sent_items.append(sent_item)
+        
         sent_items_list = list(sent_items)
 
         # Split the data in each folder to train & eval
@@ -107,20 +117,20 @@ if __name__ == "__main__":
         # Write training text to multiple jsonl files
         dir_names = [i for i in group_path.split("/") if i != ""]
         train_file_base = f"{args.out_parent_path}/train/" + dir_names[-1]
-        write_to_multiple_jsonl_files(list_train, train_file_base, args.max_lines)
+        write_to_multiple_jsonl_files(list_train, train_file_base, args.max_line)
 
         # Write eval text to multiple jsonl files
         eval_file_base = f"{args.out_parent_path}/eval/" + dir_names[-1]
-        write_to_multiple_jsonl_files(list_eval, eval_file_base, args.max_lines)
+        write_to_multiple_jsonl_files(list_eval, eval_file_base, args.max_line)
 
     logger.info('Finish preprocessing.')
 
     logger.info('*** Data split information ***')
     logger.info('1. Training Data')
     logger.info(f'Files path: {args.out_parent_path}/train/')
-    logger.info(f'Data num: {len(list_train)}')
+    logger.info(f'Sentence num: {len(list_train)}')
     logger.info('2. Evaluation Data')
     logger.info(f'Files path: {args.out_parent_path}/eval/')
-    logger.info(f'Data num: {len(list_eval)}')
+    logger.info(f'Sentence num: {len(list_eval)}')
     
-    logger.info(f'Log saved in {"logs/preprocessing--reformat_uft_data.log"}')
+    logger.info(f'Log saved in {LOG_FINENAME}')
