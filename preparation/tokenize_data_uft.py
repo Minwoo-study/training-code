@@ -15,6 +15,8 @@ from preprocessing_utils import setup_logging, reconstruct_command
 
 LOG = setup_logging("logs/preprocessing--tokenize_data_uft.log")
 
+from tqdm_logging import logging_tqdm
+
 
 def main() -> None:
     LOG.info('Start preprocessing.')
@@ -67,7 +69,7 @@ def main() -> None:
         txt_files = [file for file in input_path.glob("*.jsonl")]
 
         # Obtain the list of token arrays
-        for file in tqdm(txt_files, desc="Tokenizing"):
+        for file in logging_tqdm(txt_files, desc="Tokenizing"):
             file_tokens, num_tokens, num_sents = _tokenize_file(tokenizer, file, args.max_length)
             all_file_tokens += file_tokens
             total_num_tokens += num_tokens
@@ -75,7 +77,7 @@ def main() -> None:
 
     _save_as_arrow_file(all_file_tokens, args.output_file)
     LOG.info(f"Done! Output file saved to {args.output_file}.")
-    LOG.info(f"Dataset contains {total_num_sents} sentences; {total_num_tokens:,} tokens.")
+    LOG.info(f"Dataset contains {total_num_sents:,} sentences and {total_num_tokens:,} tokens.")
 
 def _parse_args_from_argv() -> argparse.Namespace:
     '''Parses arguments.'''

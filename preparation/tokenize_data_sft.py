@@ -104,7 +104,7 @@ def main() -> None:
             writer.write_table(table)
 
     LOG.info(f"Done! Output file saved to {args.output_file}.")
-    LOG.info(f"Dataset contains {len(df)} sentences; {num_tokens:,} tokens.")
+    LOG.info(f"Dataset contains {len(df):,} sentences and {num_tokens:,} tokens.")
 
 
 def _parse_args_from_argv() -> argparse.Namespace:

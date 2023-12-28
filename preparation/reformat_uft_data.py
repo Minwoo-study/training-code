@@ -80,10 +80,11 @@ if __name__ == "__main__":
     group_paths = [
         f"{args.in_parent_path}/01.Lexis&Nexis",
         f"{args.in_parent_path}/02.Twitter",
-        f"{args.in_parent_path}/03.Extra",
+        f"{args.in_parent_path}/03.Extra"
     ]
     
     logger.info('Start splitting data.')
+    len_train, len_eval = 0, 0
     for group_path in group_paths:
         logger.info(f"Reading {group_path}...")
         all_json_files = list_json_files(group_path)
@@ -114,6 +115,9 @@ if __name__ == "__main__":
         list_train = sent_items_list[:split_idx]
         list_eval = sent_items_list[split_idx:]
 
+        len_train += len(list_train)
+        len_eval += len(list_eval)
+
         # Write training text to multiple jsonl files
         dir_names = [i for i in group_path.split("/") if i != ""]
         train_file_base = f"{args.out_parent_path}/train/" + dir_names[-1]
@@ -128,9 +132,9 @@ if __name__ == "__main__":
     logger.info('*** Data split information ***')
     logger.info('1. Training Data')
     logger.info(f'Files path: {args.out_parent_path}/train/')
-    logger.info(f'Sentence num: {len(list_train)}')
+    logger.info(f'Sentence num: {len_train}')
     logger.info('2. Evaluation Data')
     logger.info(f'Files path: {args.out_parent_path}/eval/')
-    logger.info(f'Sentence num: {len(list_eval)}')
+    logger.info(f'Sentence num: {len_eval}')
     
-    logger.info(f'Log saved in {LOG_FINENAME}')
+    logger.info(f'Log saved in {LOG_FILENAME}')
