@@ -1,12 +1,55 @@
 import os
+import json
+import sys
 import pathlib
 import typing as t
 from dataclasses import dataclass, field
 
 import torch
 import transformers
+import wandb
+from accelerate import Accelerator
+from peft import PeftModel
 from dataset import DataCollatorForMmapedDataset, MmappedArrowDataset
 from profiling import ProfilerCallback, build_profiler_configuration
+
+import logging
+from transformers import logging as hf_logging
+
+# Set up Python logging to file
+logger = hf_logging.get_logger()
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%d-%d %H:%M:%S')
+for handler in logger.handlers:
+    handler.setFormatter(log_format)
+logger.setLevel(logging.INFO)
+
+
+class DualOutput:
+    """
+    Usage
+    if __name__ == "__main__":
+        sys.stdout = DualOutput("output.txt")
+
+        # Your script here. For example:
+        print("Hello, world!")
+        # Rest of your code.
+    """
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "w")
+        self.logger = logger
+        handler = logging.StreamHandler(self)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%d-%d %H:%M:%S')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):  # Needed for Python 3 compatibility.
+        self.terminal.flush()
+        self.log.flush()
 
 
 @dataclass
@@ -55,7 +98,26 @@ class LoraArguments:
                                                  default=None)
 
 
+def save_wandb_run_logs(output_path) -> None:
+    api = wandb.Api()
+    run_path = f"{os.getenv('WANDB_PROJECT')}/{os.getenv('WANDB_RUN_ID')}"
+    run = api.run(run_path)
+
+    download_path = run.file('output.log').download()
+    os.rename(download_path.name, f'{output_path}/train_progress.log')
+
+    download_path = run.file('wandb-summary.json').download()
+    os.rename(download_path.name, f'{output_path}/train_summary.json')
+
+    download_path = run.file('wandb-metadata.json').download()
+    os.rename(download_path.name, f'{output_path}/train_metadata.json')
+
+    print(f"Logs from {run_path} saved to {output_path}.")
+
+
 def main() -> None:
+    accelerator = Accelerator()
+
     parser = transformers.HfArgumentParser((
         ModelArguments,
         DataArguments,
@@ -66,6 +128,12 @@ def main() -> None:
     model_args, data_args, lora_args, \
         other_args, training_args = parser.parse_args_into_dataclasses()
 
+    log_path = "logs/train-uft/" if other_args.uft else "logs/train-sft/"
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    if accelerator.is_main_process:
+        sys.stdout = DualOutput(f"{log_path}terminal_output.log")
+
+    logger.info('Load tokenizer')
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         padding_side="right",
@@ -87,13 +155,14 @@ def main() -> None:
         time.sleep(other_args.model_load_delay_per_rank *
                    training_args.local_rank)
 
-    # Model loading.
+    # Model loading. => local에서 받을 수 있는지
     model_load_dtype = None
     if training_args.bf16:
         model_load_dtype = torch.bfloat16
     elif training_args.fp16:
         model_load_dtype = torch.float16
 
+    logger.info('Load model')
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
         low_cpu_mem_usage=model_args.low_cpu_mem_usage,
@@ -149,8 +218,16 @@ def main() -> None:
         model.config.use_cache = False
 
     # Dataset setup.
+    logger.info('*** Load Training data ***')
+    logger.info(f'Train file: {data_args.train_file}')
     train_dataset = MmappedArrowDataset(data_args.train_file, sft=not other_args.uft)
+    logger.info(f'Train size: {len(train_dataset)} data item')
+    
+    logger.info('*** Load Eval data ***')
+    logger.info(f'Eval file: {data_args.eval_file}')
     eval_dataset = MmappedArrowDataset(data_args.eval_file, sft=not other_args.uft)
+    logger.info(f'Eval size: {len(eval_dataset)} data item')
+
     data_collator = DataCollatorForMmapedDataset(tokenizer=tokenizer, sft=not other_args.uft)
 
     trainer = transformers.Trainer(
@@ -188,6 +265,37 @@ def main() -> None:
 
     trainer.save_state()
     trainer.save_model()
+
+    logger.info('Training finished.')
+
+    if accelerator.is_main_process:
+        os.environ["WANDB_RUN_ID"] = wandb.run.id
+        wandb.finish()
+        
+        # Save log
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        save_wandb_run_logs(log_path)
+    
+    if lora_args.use_lora:
+        logger.info('** Merge LORA weights to base model **')
+        logger.info('Load model...')
+        base_model = transformers.AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
+        model = PeftModel.from_pretrained(base_model, training_args.output_dir)
+        merged_model = model.merge_and_unload()
+        
+        logger.info('Load tokenizer...')
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_args.model_name_or_path)
+
+        logger.info("Saving merged model & tokenizer...")
+        merged_model.save_pretrained(
+            f"{training_args.output_dir}/merged",
+            push_to_hub=False
+        )
+        tokenizer.save_pretrained(
+            f"{training_args.output_dir}/merged",
+            push_to_hub=False
+        )
+        logger.info(f'Model saved to "{training_args.output_dir}/merged". Please use this directory to access the trained model.')
 
 
 class SavePeftModelCallback(transformers.TrainerCallback):
