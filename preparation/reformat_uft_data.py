@@ -80,6 +80,7 @@ if __name__ == "__main__":
     group_paths = [
         f"{args.in_parent_path}/01.Lexis&Nexis",
         f"{args.in_parent_path}/02.Twitter",
+        f"{args.in_parent_path}/02.Twitter_2",
         f"{args.in_parent_path}/03.Extra"
     ]
     
@@ -89,24 +90,45 @@ if __name__ == "__main__":
         logger.info(f"Reading {group_path}...")
         all_json_files = list_json_files(group_path)
 
-        # Read sentences
-        sent_items = []
+        # # Read sentences
+        # sent_items = []
+        # for file_name in logging_tqdm(all_json_files, desc="Read file"):
+        #     with open(file_name, 'r', encoding='utf-8-sig') as file:
+        #         data = json.load(file)
+        #         for text in data['data']:
+        #             if 'Raw_data' not in text or not isinstance(text['Raw_data'], str):
+        #                 continue
+
+        #             text_clean = ' '.join(text['Raw_data'].split())
+        #             sent_item = {
+        #                 'Sen_ID': text['Sen_ID'],
+        #                 'Sentence': text_clean
+        #             }
+        #             if sent_item not in sent_items:  # avoid duplicates
+        #                 sent_items.append(sent_item)
+        
+        # sent_items_list = list(sent_items)
+        
+        # BY using set optimize the avoiding duplicates process
+        sent_items = set()  # 빈 세트 생성
         for file_name in logging_tqdm(all_json_files, desc="Read file"):
             with open(file_name, 'r', encoding='utf-8-sig') as file:
                 data = json.load(file)
                 for text in data['data']:
-                    if 'Raw_data' not in text or not isinstance(text['Raw_data'], str):
-                        continue
+                    if 'Raw_data' in text and isinstance(text['Raw_data'], str):
+                        text_clean = ' '.join(text['Raw_data'].split())
+                        sent_item = {
+                            'Sen_ID': text['Sen_ID'],
+                            'Sentence': text_clean
+                        }
+                        sent_items.add(tuple(sent_item.items()))  # 튜플로 변환하여 세트에 추가
+        sent_items = [dict(item) for item in sent_items]  # 다시 딕셔너리로 변환
 
-                    text_clean = ' '.join(text['Raw_data'].split())
-                    sent_item = {
-                        'Sen_ID': text['Sen_ID'],
-                        'Sentence': text_clean
-                    }
-                    if sent_item not in sent_items:  # avoid duplicates
-                        sent_items.append(sent_item)
-        
         sent_items_list = list(sent_items)
+
+
+
+
 
         # Split the data in each folder to train & eval
         logger.info("Split train & eval...")

@@ -21,7 +21,7 @@ def setup_logging(log_path):
     f_handler.setLevel(logging.INFO)
 
     # Create formatters and add it to handlers
-    all_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%d-%d %H:%M:%S')
+    all_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     c_handler.setFormatter(all_format)
     f_handler.setFormatter(all_format)
 
